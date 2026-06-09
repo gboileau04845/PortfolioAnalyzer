@@ -39,11 +39,18 @@ _session_user: dict[str, dict] = {}
 # upn -> {"name", "day", "cu_seconds", "queries", "tokens"} : conso du jour.
 # Persisté sur disque pour survivre à un redémarrage de l'app (cf. _load/_save).
 _usage: dict[str, dict] = {}
-_USAGE_STORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage_store.json")
+# Dossier des données persistées. En local : à côté du code. Sur Azure App
+# Service : mettre DATA_DIR=/home/data (persistant entre redémarrages).
+_DATA_DIR = os.environ.get("DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+try:
+    os.makedirs(_DATA_DIR, exist_ok=True)
+except OSError:
+    _DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+_USAGE_STORE = os.path.join(_DATA_DIR, "usage_store.json")
 # upn -> liste de messages [{"role", "text", "cu"?}] : historique de conversation,
 # persisté pour survivre à une déconnexion / reconnexion / redémarrage.
 _history: dict[str, list] = {}
-_CONV_STORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conversations_store.json")
+_CONV_STORE = os.path.join(_DATA_DIR, "conversations_store.json")
 _HISTORY_MAX = 400  # messages conservés par utilisateur (garde-fou)
 
 # --- Budgets CU : exprimés en % d'une capacité Fabric (SKU) sur une fenêtre ---
@@ -53,7 +60,7 @@ _HISTORY_MAX = 400  # messages conservés par utilisateur (garde-fou)
 # Un utilisateur est bloqué dès que l'UN OU L'AUTRE est atteint.
 # Valeurs par défaut depuis .env, surchargeables à chaud via la page
 # Administration (persistées dans admin_config.json).
-_ADMIN_STORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "admin_config.json")
+_ADMIN_STORE = os.path.join(_DATA_DIR, "admin_config.json")
 # Code d'accès à la page Administration (vide = pas de protection).
 ADMIN_CODE = os.environ.get("ADMIN_ACCESS_CODE", "").strip()
 _env_group = float(
@@ -223,16 +230,34 @@ def _snapshot() -> dict:
     }
 
 
+def _easyauth(request: Request):
+    """Identité SSO injectée par App Service Easy Auth : (jeton d'accès, UPN).
+    Renvoie (None, None) en local (mode interactif)."""
+    return (
+        request.headers.get("x-ms-token-aad-access-token"),
+        request.headers.get("x-ms-client-principal-name"),
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
 
 
 @app.post("/api/login")
-def login(payload: dict = Body(default={})):
-    """Déclenche la connexion Entra ID (ouvre le navigateur) AVANT le chat."""
+def login(request: Request, payload: dict = Body(default={})):
+    """Connexion utilisateur. En SSO (Azure), lit le jeton/UPN des en-têtes Easy
+    Auth ; en local, déclenche la connexion interactive (navigateur)."""
+    token, hdr_upn = _easyauth(request)
+    reset = fabric_agent.set_request_token(token) if token else None
     try:
         user = fabric_agent.login()
+        if hdr_upn:  # l'UPN d'Easy Auth fait foi
+            user = {
+                **(user or {}),
+                "upn": (user or {}).get("upn") or hdr_upn,
+                "name": (user or {}).get("name") or hdr_upn,
+            }
         sid = (payload or {}).get("session_id")
         upn = (user or {}).get("upn") or (user or {}).get("name") or "unknown"
         if sid:
@@ -247,6 +272,9 @@ def login(payload: dict = Body(default={})):
         return JSONResponse(
             {"ok": False, "error": f"{type(e).__name__}: {e}"}, status_code=502
         )
+    finally:
+        if reset is not None:
+            fabric_agent.reset_request_token(reset)
 
 
 @app.get("/api/usage")
@@ -256,47 +284,54 @@ def usage():
 
 
 @app.post("/api/chat")
-def chat(payload: dict = Body(...)):
+def chat(request: Request, payload: dict = Body(...)):
     session_id = payload.get("session_id") or str(uuid.uuid4())
     question = (payload.get("question") or "").strip()
     if not question:
         return JSONResponse({"error": "Empty question."}, status_code=400)
 
-    # Garde-fou : on BLOQUE la requête AVANT tout appel à l'agent (donc aucune CU
-    # consommée) si le plafond GROUPE (total entreprise) OU le plafond de
-    # l'UTILISATEUR courant est atteint. Les budgets se réinitialisent chaque jour.
-    snap = _snapshot()
-    who = _session_user.get(session_id) or {"upn": "unknown", "name": "Unknown user"}
-    user_cu = _user_entry(who["upn"], who["name"])["cu_seconds"]
-
-    grp_budget, usr_budget = _group_budget(), _user_budget()
-    blocked_msg = None
-    if grp_budget and snap["total"]["cu_seconds"] >= grp_budget:
-        blocked_msg = (
-            f"Group CU budget reached ({_cfg['group_pct']:g}% of the Fabric capacity). "
-            "The agent is paused for everyone to protect the capacity. "
-            "It resets daily; raise the group budget in Administration to allow more."
-        )
-    elif usr_budget and user_cu >= usr_budget:
-        blocked_msg = (
-            f"Your personal CU budget is reached ({_cfg['user_pct']:g}% of the Fabric "
-            "capacity). Your access is paused; it resets daily. Raise the per-user "
-            "budget in Administration to allow more."
-        )
-    if blocked_msg:
-        return JSONResponse(
-            {"session_id": session_id, "error": blocked_msg, "blocked": True, "usage": snap},
-            status_code=429,
-        )
-
+    token, hdr_upn = _easyauth(request)
+    reset = fabric_agent.set_request_token(token) if token else None
     try:
+        # À qui imputer la conso : UPN de l'en-tête SSO (fait foi), sinon mapping
+        # de session (mode local).
+        if hdr_upn:
+            sess = _session_user.get(session_id) or {}
+            who = {"upn": hdr_upn, "name": sess.get("name") or hdr_upn}
+        else:
+            who = _session_user.get(session_id) or {"upn": "unknown", "name": "Unknown user"}
+
+        # Garde-fou : on BLOQUE la requête AVANT tout appel à l'agent (donc aucune
+        # CU consommée) si le plafond GROUPE OU celui de l'utilisateur est atteint.
+        snap = _snapshot()
+        user_cu = _user_entry(who["upn"], who["name"])["cu_seconds"]
+        grp_budget, usr_budget = _group_budget(), _user_budget()
+        blocked_msg = None
+        if grp_budget and snap["total"]["cu_seconds"] >= grp_budget:
+            blocked_msg = (
+                f"Group CU budget reached ({_cfg['group_pct']:g}% of the Fabric capacity). "
+                "The agent is paused for everyone to protect the capacity. "
+                "It resets daily; raise the group budget in Administration to allow more."
+            )
+        elif usr_budget and user_cu >= usr_budget:
+            blocked_msg = (
+                f"Your personal CU budget is reached ({_cfg['user_pct']:g}% of the Fabric "
+                "capacity). Your access is paused; it resets daily. Raise the per-user "
+                "budget in Administration to allow more."
+            )
+        if blocked_msg:
+            return JSONResponse(
+                {"session_id": session_id, "error": blocked_msg, "blocked": True, "usage": snap},
+                status_code=429,
+            )
+
         thread_id = _sessions.get(session_id)
         if not thread_id:
             thread_id = fabric_agent.new_thread()
             _sessions[session_id] = thread_id
         answer, meta = fabric_agent.ask(thread_id, question)
 
-        # Estimation CU de la question + imputation à l'utilisateur de la session.
+        # Estimation CU de la question + imputation à l'utilisateur.
         cu, basis = fabric_agent.estimate_cu_seconds(
             tokens_in=meta.get("tokens_in"),
             tokens_out=meta.get("tokens_out"),
@@ -304,7 +339,6 @@ def chat(payload: dict = Body(...)):
             question=question,
             answer=answer,
         )
-        who = _session_user.get(session_id) or {"upn": "unknown", "name": "Unknown user"}
         e = _user_entry(who["upn"], who["name"])
         e["cu_seconds"] += cu
         e["queries"] += 1
@@ -312,8 +346,7 @@ def chat(payload: dict = Body(...)):
         _save_usage()  # persiste la conso (survit au redémarrage de l'app)
         meta = {**meta, "cu_seconds": cu, "cu_basis": basis}
 
-        # Persiste l'échange dans l'historique de l'utilisateur (pour le restaurer
-        # après déconnexion / reconnexion / redémarrage).
+        # Persiste l'échange dans l'historique de l'utilisateur.
         hist = _history.setdefault(who["upn"], [])
         hist.append({"role": "user", "text": question})
         hist.append({"role": "agent", "text": answer, "cu": cu})
@@ -329,6 +362,9 @@ def chat(payload: dict = Body(...)):
             {"session_id": session_id, "error": fabric_agent.localize_error(str(e))},
             status_code=502,
         )
+    finally:
+        if reset is not None:
+            fabric_agent.reset_request_token(reset)
 
 
 def _check_admin_code(code: str | None) -> bool:

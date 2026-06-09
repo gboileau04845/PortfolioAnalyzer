@@ -17,6 +17,7 @@ OAuth Authorization Code (MSAL, sign-in par utilisateur) — seul `_token()` /
 from __future__ import annotations
 
 import base64
+import contextvars
 import json
 import os
 import time
@@ -71,23 +72,46 @@ def estimate_cu_seconds(
     cu = (ti * CU_PER_1K_INPUT + to * CU_PER_1K_OUTPUT) / 1000.0
     return round(cu, 2), "text-estimate"
 
-# --- Authentification : identité de l'utilisateur (flux délégué) ---
-# Point unique à remplacer pour passer en multi-utilisateurs (MSAL auth code).
+# --- Authentification : deux modes ---------------------------------------
+# 1) AZURE (prod/test) : SSO Microsoft via App Service « Easy Auth ». App
+#    Service authentifie l'utilisateur et transmet son jeton d'accès dans un
+#    en-tête ; l'app le lit par requête (jeton par utilisateur -> la RLS
+#    s'applique). app.py dépose ce jeton dans la variable de contexte ci-dessous.
+# 2) LOCAL (dev) : aucun en-tête Easy Auth -> repli sur InteractiveBrowserCredential
+#    (ouvre le navigateur sur la machine du dev).
+_user_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "fabric_user_token", default=None
+)
+
 _cred_kwargs: dict[str, str] = {}
 if os.environ.get("AZURE_TENANT_ID"):
     _cred_kwargs["tenant_id"] = os.environ["AZURE_TENANT_ID"]
 if os.environ.get("AZURE_CLIENT_ID"):
-    # App registration (client public) avec redirect URI http://localhost et
-    # les permissions déléguées Fabric/Power BI. Optionnel : si absent,
-    # azure-identity utilise son client public par défaut.
     _cred_kwargs["client_id"] = os.environ["AZURE_CLIENT_ID"]
 
+# Credential interactif créé paresseusement (seulement en mode LOCAL, pour ne
+# pas tenter d'ouvrir un navigateur côté serveur en mode SSO).
+_credential = None
 
-_credential = InteractiveBrowserCredential(**_cred_kwargs)
+
+def set_request_token(token: str | None):
+    """Dépose le jeton SSO de la requête courante (renvoie le reset token)."""
+    return _user_token.set(token)
+
+
+def reset_request_token(reset_token) -> None:
+    _user_token.reset(reset_token)
 
 
 def _token() -> str:
-    """Token AAD de l'utilisateur connecté (cache + refresh silencieux gérés)."""
+    """Jeton d'accès Fabric : jeton SSO de la requête si présent, sinon
+    repli interactif (dev local)."""
+    tok = _user_token.get()
+    if tok:
+        return tok
+    global _credential
+    if _credential is None:
+        _credential = InteractiveBrowserCredential(**_cred_kwargs)
     return _credential.get_token(SCOPE).token
 
 
@@ -162,11 +186,11 @@ def login() -> dict:
 
 
 def logout() -> None:
-    """Déconnecte réellement : recrée le credential pour VIDER le jeton mis en
-    cache. La prochaine connexion rouvre le navigateur (prompt=select_account)
-    et permet de choisir un AUTRE compte."""
+    """Déconnecte réellement (mode LOCAL) : vide le credential mis en cache pour
+    que la prochaine connexion rouvre le navigateur et permette de choisir un
+    AUTRE compte. En mode SSO, la déconnexion se fait côté App Service."""
     global _credential, _assistant
-    _credential = InteractiveBrowserCredential(**_cred_kwargs)
+    _credential = None
     _assistant = None
 
 

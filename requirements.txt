@@ -6,3 +6,5 @@ jinja2
 openai==1.70.0
 azure-identity
 python-dotenv
+# Serveur de production (Azure App Service). En local on garde uvicorn.
+gunicorn
