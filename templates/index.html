@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Astorg — Portfolio Analyzer</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Astorg brand palette (Brand Guidelines V1.0) ───────────────── */
+    :root {
+      --navy:   #1E314D;
+      --green:  #5B8080;
+      --grey:   #E7EDEC;
+      --orange: #EA5537;
+      --navy-60:#6c7a8d;
+      --bg:     #ffffff;
+      --surface:#f4f6f6;
+      --border: #dde4e3;
+      --text:   #1E314D;
+      --muted:  #6c7a8d;
+      --font-head: "Corbel", "Roboto", "Segoe UI", Arial, sans-serif;
+      --font-body: "Roboto", "Corbel", "Segoe UI", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: var(--font-body); font-weight: 300;
+      letter-spacing: -0.01em; background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column; -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--navy); color: #fff; padding: 14px 26px;
+      display: flex; align-items: center; gap: 22px; flex: 0 0 auto;
+    }
+    header .logo { height: 24px; display: block; }
+    header .spacer { flex: 1; }
+    .hdr-right { display: flex; align-items: center; gap: 26px; }
+    .hdr-right[hidden] { display: none; }
+    .hu-name { font-size: 14px; color: #eef2f2; white-space: nowrap; }
+    .hu-name b { font-weight: 500; }
+    .hu-name .sep { color: #6e7d92; margin: 0 7px; }
+    .hu-name .loc { color: #aab6c4; }
+
+    /* usage limit meters (YOU / TEAM) */
+    .usage { display: flex; align-items: center; gap: 14px; }
+    .usage[hidden] { display: none; }
+    .usage-title {
+      font-family: var(--font-head); font-size: 9.5px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase; color: #8fa0ab;
+      max-width: 64px; line-height: 1.25;
+    }
+    .usage-meters { display: flex; flex-direction: column; gap: 5px; }
+    .meter { display: flex; align-items: center; gap: 9px; }
+    .meter-lab {
+      font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+      color: #8fa0ab; width: 34px;
+    }
+    .meter-bar {
+      width: 96px; height: 6px; border-radius: 4px;
+      background: rgba(255,255,255,.16); overflow: hidden;
+    }
+    .meter-fill {
+      display: block; height: 100%; width: 0%; background: var(--green);
+      border-radius: 4px; transition: width .4s ease, background .3s ease;
+    }
+    .meter-pct {
+      font-family: var(--font-head); font-size: 12px; font-weight: 500;
+      color: #fff; width: 38px; text-align: right;
+    }
+    .meter-fill.mid  { background: #D9AB34; }
+    .meter-fill.high { background: var(--orange); }
+    .meter-fill.over { background: #AB265C; }
+
+    /* header buttons / links */
+    .hdr-link {
+      background: none; border: none; color: #cdd6d6; cursor: pointer;
+      font-family: var(--font-body); font-size: 13.5px; letter-spacing: .01em;
+      padding: 0; transition: color .15s ease; white-space: nowrap;
+    }
+    .hdr-link:hover { color: #fff; }
+    .hdr-btn {
+      background: transparent; color: #cdd6d6; border: 1px solid rgba(255,255,255,.28);
+      border-radius: 3px; padding: 8px 16px; cursor: pointer;
+      font-family: var(--font-body); font-size: 13px; transition: all .15s ease;
+      white-space: nowrap;
+    }
+    .hdr-btn:hover { color: #fff; border-color: var(--orange); }
+
+    /* ── Administration page ────────────────────────────────────────── */
+    #admin { flex: 1; overflow-y: auto; padding: 36px 24px 48px; }
+    #admin[hidden] { display: none; }
+    .admin-wrap { max-width: 860px; margin: 0 auto; width: 100%; }
+    .admin-top { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+    .admin-back {
+      background: none; border: 1px solid var(--border); border-radius: 4px;
+      color: var(--muted); cursor: pointer; padding: 7px 14px; font-family: var(--font-body);
+      font-size: 13px; transition: all .15s ease;
+    }
+    .admin-back:hover { color: var(--navy); border-color: var(--navy-60); }
+    #admin h1 {
+      font-family: var(--font-head); font-weight: 400; color: var(--navy);
+      font-size: 30px; margin: 0; letter-spacing: -0.01em;
+    }
+    .admin-sub { color: var(--muted); font-size: 14px; margin: 4px 0 28px; }
+    .card {
+      background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      padding: 22px 24px; margin-bottom: 22px;
+    }
+    .card h2 {
+      font-family: var(--font-head); font-weight: 500; color: var(--navy);
+      font-size: 13px; letter-spacing: .1em; text-transform: uppercase;
+      margin: 0 0 18px;
+    }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12.5px; color: var(--muted); }
+    .field input {
+      padding: 11px 13px; border: 1px solid var(--border); border-radius: 6px;
+      font-family: var(--font-body); font-size: 15px; color: var(--navy); background: #fff;
+    }
+    .field input:focus { outline: none; border-color: var(--navy); }
+    .field .hint { font-size: 11px; color: var(--muted); }
+    .admin-actions { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
+    .btn-primary {
+      background: var(--orange); color: #fff; border: none; border-radius: 5px;
+      padding: 12px 24px; font-family: var(--font-head); font-size: 12px; font-weight: 500;
+      letter-spacing: .08em; text-transform: uppercase; cursor: pointer; transition: background .15s ease;
+    }
+    .btn-primary:hover { background: #d8442b; }
+    .btn-ghost {
+      background: none; border: 1px solid var(--border); border-radius: 5px;
+      color: var(--muted); padding: 12px 20px; cursor: pointer; font-size: 13px;
+      font-family: var(--font-body); transition: all .15s ease;
+    }
+    .btn-ghost:hover { color: #a8351c; border-color: #f3c4b8; }
+    .admin-msg { font-size: 13px; color: var(--green); min-height: 18px; }
+    .admin-msg.err { color: #a8351c; }
+    /* admin access code gate */
+    .gate[hidden], #adminBody[hidden] { display: none; }
+    .gate-text { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+    .gate-row { display: flex; gap: 12px; align-items: center; max-width: 420px; }
+    .gate-row input {
+      flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px;
+      font-family: var(--font-body); font-size: 15px; color: var(--navy);
+    }
+    .gate-row input:focus { outline: none; border-color: var(--navy); }
+    #gateMsg { display: block; margin-top: 12px; }
+    .budget-readout { display: flex; gap: 28px; margin-top: 16px; flex-wrap: wrap; }
+    .budget-readout div { font-size: 12.5px; color: var(--muted); }
+    .budget-readout b { display: block; font-family: var(--font-head); font-size: 18px; color: var(--navy); font-weight: 500; }
+    .card-note {
+      margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--border);
+      font-size: 11.5px; line-height: 1.6; color: var(--muted);
+    }
+    .card-note b { color: var(--navy); font-weight: 500; }
+    /* consumption table */
+    .usage-table { width: 100%; border-collapse: collapse; }
+    .usage-table th {
+      text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); font-weight: 500; padding: 0 10px 10px; border-bottom: 1px solid var(--border);
+    }
+    .usage-table th.num, .usage-table td.num { text-align: right; }
+    .usage-table td { padding: 12px 10px; border-bottom: 1px solid var(--border); font-size: 13.5px; color: var(--navy); }
+    .usage-table tr.total td { font-weight: 500; }
+    .mini-bar { height: 6px; width: 120px; border-radius: 4px; background: var(--surface); overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 8px; }
+    .mini-fill { display: block; height: 100%; width: 0%; background: var(--green); border-radius: 4px; }
+    .mini-fill.mid { background: #D9AB34; } .mini-fill.high { background: var(--orange); } .mini-fill.over { background: #AB265C; }
+
+    /* ── Main ───────────────────────────────────────────────────────── */
+    main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+    /* login */
+    #login {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 22px; padding: 40px 24px; text-align: center;
+    }
+    #login .mark { height: 46px; margin-bottom: 6px; }
+    #login .eyebrow {
+      font-family: var(--font-head); font-size: 12px; font-weight: 500;
+      letter-spacing: .2em; text-transform: uppercase; color: var(--orange);
+    }
+    #login h2 { margin: 0; color: var(--navy); font-family: var(--font-head); font-size: 26px; font-weight: 500; }
+    #login p { color: var(--muted); max-width: 460px; margin: 0; line-height: 1.65; font-size: 15px; }
+    #login button {
+      background: var(--orange); color: #fff; border: none; border-radius: 4px;
+      padding: 14px 30px; font-family: var(--font-head); font-size: 13px;
+      font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+      cursor: pointer; margin-top: 6px; transition: background .15s ease;
+    }
+    #login button:hover { background: #d8442b; }
+    #login button:disabled { background: var(--navy-60); cursor: default; }
+    #login .status { font-size: 13.5px; color: var(--muted); min-height: 18px; }
+    #login .status.err { color: #a8351c; }
+
+    /* hero (empty state) */
+    #hero {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center; padding: 24px;
+    }
+    #hero[hidden] { display: none; }
+    #hero h1 {
+      margin: 0 0 14px; font-family: var(--font-head); font-weight: 400;
+      color: var(--navy); letter-spacing: -0.02em;
+      font-size: clamp(38px, 5vw, 60px);
+    }
+    #hero p { margin: 0; color: var(--muted); font-size: 16px; }
+
+    /* chat */
+    #chat { flex: 1; overflow-y: auto; padding: 0; }   /* full width → scrollbar at far right */
+    #chat[hidden] { display: none; }
+    #chatInner {
+      max-width: 880px; margin: 0 auto; padding: 32px 24px;
+      display: flex; flex-direction: column; gap: 22px;
+    }
+    .msg { display: flex; }
+    .msg.user { justify-content: flex-end; }
+    .bubble {
+      max-width: 76%; padding: 14px 18px; line-height: 1.6;
+      white-space: pre-wrap; word-wrap: break-word; font-size: 15px;
+    }
+    .agent .bubble { background: var(--surface); border: 1px solid var(--border); border-radius: 2px 14px 14px 14px; color: var(--navy); }
+    .user .bubble { background: var(--navy); color: #fff; border-radius: 14px 2px 14px 14px; }
+    .agent.error .bubble { background: #fdf1ee; border-color: #f3c4b8; color: #a8351c; }
+    .bubble strong { font-weight: 500; color: var(--navy); }
+    .user .bubble strong { color: #fff; }
+    .cu-tag { display: block; margin-top: 10px; padding-top: 7px; border-top: 1px dashed var(--border); font-size: 10.5px; letter-spacing: .02em; color: var(--muted); }
+
+    /* typing dots */
+    .dots { display: inline-flex; align-items: center; gap: 6px; padding: 4px 2px; }
+    .dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--navy-60); display: inline-block; animation: dotPulse 1.2s infinite ease-in-out both; }
+    .dots span:nth-child(2) { animation-delay: .16s; }
+    .dots span:nth-child(3) { animation-delay: .32s; }
+    @keyframes dotPulse { 0%,80%,100% { transform: scale(.6); opacity: .3; } 40% { transform: scale(1); opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .dots span { animation: none; opacity: .6; } }
+
+    /* composer */
+    form { padding: 18px 24px 28px; flex: 0 0 auto; }
+    form[hidden] { display: none; }
+    .composer { max-width: 880px; width: 100%; margin: 0 auto; display: flex; gap: 12px; align-items: flex-end; }
+    #q {
+      flex: 1; padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px;
+      font-family: var(--font-body); font-weight: 300; font-size: 15px;
+      letter-spacing: -0.01em; color: var(--navy); resize: none; max-height: 170px;
+      background: #fff; transition: border-color .15s ease; box-shadow: 0 1px 2px rgba(30,49,77,.04);
+    }
+    #q::placeholder { color: var(--muted); }
+    #q:focus { outline: none; border-color: var(--navy); }
+    #q:disabled { background: var(--surface); color: var(--muted); cursor: not-allowed; }
+    #send {
+      width: 54px; height: 54px; flex: 0 0 auto; background: var(--orange);
+      color: #fff; border: none; border-radius: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s ease;
+    }
+    #send:hover { background: #d8442b; }
+    #send:disabled { background: var(--navy-60); cursor: default; }
+    #send svg { width: 22px; height: 22px; }
+
+    #chat::-webkit-scrollbar { width: 10px; }
+    #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img class="logo" src="/static/astorg_white.png" alt="Astorg" />
+    <span class="spacer"></span>
+    <div id="hdrRight" class="hdr-right" hidden>
+      <span class="hu-name" id="huName"></span>
+      <div class="usage" id="usage">
+        <span class="usage-title">Usage limit</span>
+        <div class="usage-meters">
+          <div class="meter">
+            <span class="meter-lab">You</span>
+            <span class="meter-bar"><span id="youFill" class="meter-fill"></span></span>
+            <span class="meter-pct" id="youPct">0%</span>
+          </div>
+          <div class="meter">
+            <span class="meter-lab">Astorg</span>
+            <span class="meter-bar"><span id="teamFill" class="meter-fill"></span></span>
+            <span class="meter-pct" id="teamPct">0%</span>
+          </div>
+        </div>
+      </div>
+      <button id="adminBtn" class="hdr-link" type="button">Administration</button>
+      <button id="signoutBtn" class="hdr-btn" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="login">
+      <img class="mark" src="/static/astorg_navy.png" alt="Astorg" />
+      <span class="eyebrow">Sign-in required</span>
+      <h2>Query your portfolio data</h2>
+      <p>Sign in with your Microsoft account to chat with the data agent.
+         A Microsoft sign-in window will open.</p>
+      <button id="loginBtn" type="button">Sign in with Microsoft</button>
+      <div class="status" id="loginStatus"></div>
+    </section>
+
+    <section id="hero" hidden>
+      <h1>How can I help?</h1>
+      <p>Ask a question about your portfolio data below.</p>
+    </section>
+
+    <section id="admin" hidden>
+      <div class="admin-wrap">
+        <div class="admin-top">
+          <button id="adminBack" class="admin-back" type="button">← Back</button>
+        </div>
+        <h1>Administration</h1>
+        <p class="admin-sub">Set the agent's Fabric capacity budgets and review consumption.</p>
+
+        <div class="card gate" id="adminGate">
+          <h2>Restricted area</h2>
+          <p class="gate-text">Enter the administration access code to continue.</p>
+          <div class="gate-row">
+            <input id="adminCodeInput" type="password" placeholder="Access code" autocomplete="off" />
+            <button id="adminUnlock" class="btn-primary" type="button">Unlock</button>
+          </div>
+          <span class="admin-msg err" id="gateMsg"></span>
+        </div>
+
+        <div id="adminBody" hidden>
+        <div class="card">
+          <h2>Usage budgets</h2>
+          <div class="field-grid">
+            <div class="field">
+              <label for="cfgSku">Capacity size (CU)</label>
+              <input id="cfgSku" type="number" min="0" step="1" />
+              <span class="hint">F2 = 2 · F8 = 8 · F64 = 64 · Trial = 64</span>
+            </div>
+            <div class="field">
+              <label for="cfgWindow">Budget window (hours)</label>
+              <input id="cfgWindow" type="number" min="1" step="1" />
+              <span class="hint">24 = daily quota (AI is smoothed over 24h)</span>
+            </div>
+            <div class="field">
+              <label for="cfgGroup">Group budget — % of capacity (Astorg)</label>
+              <input id="cfgGroup" type="number" min="0" max="100" step="0.01" />
+              <span class="hint">Caps total usage for the whole company.</span>
+            </div>
+            <div class="field">
+              <label for="cfgUser">Per-user budget — % of capacity (YOU)</label>
+              <input id="cfgUser" type="number" min="0" max="100" step="0.01" />
+              <span class="hint">Caps each individual user.</span>
+            </div>
+          </div>
+          <div class="admin-actions">
+            <button id="cfgSave" class="btn-primary" type="button">Save budgets</button>
+            <span class="admin-msg" id="cfgMsg"></span>
+          </div>
+          <div class="budget-readout">
+            <div>Group budget<b id="roGroup">—</b></div>
+            <div>Per-user budget<b id="roUser">—</b></div>
+            <div>Capacity / window<b id="roCap">—</b></div>
+          </div>
+          <p class="card-note">Consumption is estimated per question from Microsoft's
+            official data agent rate (operation “AI Query”): <b>100 CU·s</b> per 1,000
+            input tokens and <b>400 CU·s</b> per 1,000 output tokens. When the agent
+            doesn't expose token counts, it is approximated from the text length.
+            This estimate excludes the downstream DAX/SQL queries the agent may run,
+            which Fabric bills separately — so real consumption is slightly higher.</p>
+        </div>
+
+        <div class="card">
+          <h2>Consumption today</h2>
+          <table class="usage-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Usage (vs per-user budget)</th>
+                <th class="num">CU·s</th>
+                <th class="num">Queries</th>
+              </tr>
+            </thead>
+            <tbody id="usageRows"></tbody>
+          </table>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="chat" hidden><div id="chatInner"></div></div>
+
+    <form id="form" hidden>
+      <div class="composer">
+        <textarea id="q" rows="1" placeholder="Ask your portfolio question…" autocomplete="off"></textarea>
+        <button id="send" type="submit" aria-label="Send">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const chatInner = document.getElementById('chatInner');
+    const form = document.getElementById('form');
+    const hero = document.getElementById('hero');
+    const q = document.getElementById('q');
+    const send = document.getElementById('send');
+    const loginView = document.getElementById('login');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginStatus = document.getElementById('loginStatus');
+    const hdrRight = document.getElementById('hdrRight');
+    const usageEl = document.getElementById('usage');
+    const adminBtn = document.getElementById('adminBtn');
+    const adminView = document.getElementById('admin');
+    const sessionId = crypto.randomUUID();
+
+    let myUpn = null;
+    let budgetBlocked = false;
+    let hasMessages = false;
+    let lastUsage = null;   // latest snapshot, for the admin table
+
+    function applyBlock() {
+      q.disabled = budgetBlocked;
+      send.disabled = budgetBlocked;
+      q.placeholder = budgetBlocked ? 'Usage limit reached — agent paused' : 'Ask your portfolio question…';
+    }
+
+    // ── Usage meters (YOU = my per-user budget, TEAM = group/RSM budget) ──
+    function cuClass(pct) {
+      if (pct >= 80) return 'over';   // red
+      if (pct >= 50) return 'mid';    // amber
+      return '';                      // green
+    }
+    function fmtCU(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+      if (n >= 1000)    return (n / 1000).toFixed(1) + 'k';
+      return n.toFixed(0);
+    }
+    function fmtPct(p) { return Math.round(p) + '%'; }
+
+    function renderUsage(u) {
+      if (!u || !u.total || !u.budget) return;
+      lastUsage = u;
+      usageEl.hidden = false;
+      const t = u.total;
+      const mine = myUpn ? u.users.find(x => x.upn === myUpn) : null;
+      const youP = mine ? mine.pct : 0;   // YOU
+      const teamP = t.pct;                 // TEAM (RSM total)
+      budgetBlocked = (youP >= 100) || (teamP >= 100);
+      applyBlock();
+
+      const youFill = document.getElementById('youFill');
+      youFill.style.width = Math.min(youP, 100) + '%';
+      youFill.className = 'meter-fill ' + cuClass(youP);
+      document.getElementById('youPct').textContent = fmtPct(youP);
+
+      const teamFill = document.getElementById('teamFill');
+      teamFill.style.width = Math.min(teamP, 100) + '%';
+      teamFill.className = 'meter-fill ' + cuClass(teamP);
+      document.getElementById('teamPct').textContent = fmtPct(teamP);
+
+      if (!adminView.hidden) renderAdmin(u);   // keep the open admin page in sync
+    }
+
+    // ── Administration page ───────────────────────────────────────────
+    function renderAdmin(u) {
+      if (!u || !u.budget) return;
+      const b = u.budget, t = u.total;
+      document.getElementById('cfgSku').value = b.sku_cu;
+      document.getElementById('cfgWindow').value = b.window_hours;
+      document.getElementById('cfgGroup').value = b.group_pct;
+      document.getElementById('cfgUser').value = b.user_pct;
+      document.getElementById('roGroup').textContent = fmtCU(b.group_cu_seconds) + ' CU·s';
+      document.getElementById('roUser').textContent = fmtCU(b.user_cu_seconds) + ' CU·s';
+      document.getElementById('roCap').textContent = 'F' + b.sku_cu + ' · ' + b.window_hours + 'h';
+      const rows = document.getElementById('usageRows');
+      rows.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.className = 'total';
+      tr.innerHTML = '<td>Astorg (all users)</td><td>' + bar(t.pct)
+        + '<span>' + fmtPct(t.pct) + ' of group</span></td><td class="num">'
+        + fmtCU(t.cu_seconds) + '</td><td class="num">' + t.queries + '</td>';
+      rows.appendChild(tr);
+      if (!u.users.length) {
+        const e = document.createElement('tr');
+        e.innerHTML = '<td colspan="4" style="color:var(--muted)">No usage yet today.</td>';
+        rows.appendChild(e);
+      }
+      u.users.forEach(us => {
+        const r = document.createElement('tr');
+        r.innerHTML = '<td></td><td>' + bar(us.pct) + '<span>' + fmtPct(us.pct)
+          + '</span></td><td class="num">' + fmtCU(us.cu_seconds) + '</td><td class="num">' + us.queries + '</td>';
+        r.children[0].textContent = us.user;
+        rows.appendChild(r);
+      });
+    }
+    function bar(pct) {
+      return '<span class="mini-bar"><span class="mini-fill ' + cuClass(pct)
+        + '" style="width:' + Math.min(pct, 100) + '%"></span></span>';
+    }
+    let adminCode = '';            // access code, kept once validated
+    let adminAuthorized = false;
+    const adminGate = document.getElementById('adminGate');
+    const adminBody = document.getElementById('adminBody');
+
+    function adminHeaders(extra) {
+      return Object.assign({ 'X-Admin-Code': adminCode }, extra || {});
+    }
+    function showAdminBody() {
+      adminGate.hidden = true; adminBody.hidden = false;
+      document.getElementById('cfgMsg').textContent = '';
+      fetch('/api/admin/config', { headers: adminHeaders() })
+        .then(r => r.json()).then(d => {
+          if (d.usage) { lastUsage = d.usage; renderAdmin(d.usage); }
+        }).catch(() => { if (lastUsage) renderAdmin(lastUsage); });
+    }
+    function openAdmin() {
+      hero.hidden = true; chat.hidden = true; form.hidden = true;
+      adminView.hidden = false;
+      document.getElementById('gateMsg').textContent = '';
+      if (adminAuthorized) {
+        showAdminBody();
+      } else {
+        adminGate.hidden = false; adminBody.hidden = true;
+        const inp = document.getElementById('adminCodeInput');
+        inp.value = ''; inp.focus();
+      }
+    }
+    function closeAdmin() {
+      adminView.hidden = true;
+      form.hidden = false;
+      if (hasMessages) { chat.hidden = false; } else { hero.hidden = false; }
+      if (!budgetBlocked) q.focus();
+    }
+    adminBtn.addEventListener('click', () => {
+      if (adminView.hidden) openAdmin(); else closeAdmin();
+    });
+    document.getElementById('adminBack').addEventListener('click', closeAdmin);
+
+    async function tryUnlock() {
+      const gateMsg = document.getElementById('gateMsg');
+      const code = document.getElementById('adminCodeInput').value;
+      gateMsg.textContent = '';
+      try {
+        const res = await fetch('/api/admin/config', { headers: { 'X-Admin-Code': code } });
+        if (res.status === 403) { gateMsg.textContent = '⚠️ Invalid access code.'; return; }
+        const d = await res.json();
+        adminCode = code; adminAuthorized = true;
+        if (d.usage) { lastUsage = d.usage; }
+        showAdminBody();
+      } catch (e) { gateMsg.textContent = '⚠️ ' + e; }
+    }
+    document.getElementById('adminUnlock').addEventListener('click', tryUnlock);
+    document.getElementById('adminCodeInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); tryUnlock(); }
+    });
+
+    document.getElementById('cfgSave').addEventListener('click', async () => {
+      const msg = document.getElementById('cfgMsg');
+      msg.className = 'admin-msg'; msg.textContent = 'Saving…';
+      const body = {
+        sku_cu: document.getElementById('cfgSku').value,
+        window_hours: document.getElementById('cfgWindow').value,
+        group_pct: document.getElementById('cfgGroup').value,
+        user_pct: document.getElementById('cfgUser').value,
+      };
+      try {
+        const res = await fetch('/api/admin/config', {
+          method: 'POST', headers: adminHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body)
+        });
+        if (res.status === 403) { msg.className = 'admin-msg err'; msg.textContent = '⚠️ Access code required.'; return; }
+        const d = await res.json();
+        if (d.ok) {
+          msg.textContent = '✓ Budgets saved.';
+          renderUsage(d.usage); renderAdmin(d.usage);
+        } else {
+          msg.className = 'admin-msg err';
+          msg.textContent = '⚠️ ' + ((d.errors && d.errors.join('; ')) || 'Invalid values.');
+        }
+      } catch (e) { msg.className = 'admin-msg err'; msg.textContent = '⚠️ ' + e; }
+    });
+
+    document.getElementById('signoutBtn').addEventListener('click', async () => {
+      try { await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) }); } catch (e) {}
+      location.reload();
+    });
+
+    loginBtn.addEventListener('click', async () => {
+      loginBtn.disabled = true;
+      loginStatus.className = 'status';
+      loginStatus.textContent = 'A Microsoft window will open… sign in, then please wait.';
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          loginView.style.display = 'none';
+          hdrRight.hidden = false;
+          hero.hidden = false;
+          form.hidden = false;
+          const name = data.user && data.user.name;
+          myUpn = (data.user && data.user.upn) || null;
+          document.getElementById('huName').innerHTML =
+            '<b>' + escapeHtml(name || 'User') + '</b>';
+          renderUsage(data.usage);
+          renderHistory(data.history);
+          q.focus();
+        } else {
+          loginStatus.className = 'status err';
+          loginStatus.textContent = '⚠️ ' + (data.error || 'Sign-in failed.');
+          loginBtn.disabled = false;
+        }
+      } catch (e) {
+        loginStatus.className = 'status err';
+        loginStatus.textContent = '⚠️ ' + e;
+        loginBtn.disabled = false;
+      }
+    });
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function render(s) {
+      return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    }
+    function addMsg(role, text, isError) {
+      if (!hasMessages) { hasMessages = true; hero.hidden = true; chat.hidden = false; }
+      const wrap = document.createElement('div');
+      wrap.className = 'msg ' + role + (isError ? ' error' : '');
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      b.innerHTML = render(text);
+      wrap.appendChild(b);
+      chatInner.appendChild(wrap);
+      chat.scrollTop = chat.scrollHeight;
+      return b;
+    }
+
+    // Restore a saved conversation (returned by /api/login).
+    function renderHistory(list) {
+      if (!Array.isArray(list) || !list.length) return;
+      list.forEach(m => {
+        const b = addMsg(m.role === 'user' ? 'user' : 'agent', m.text || '');
+        if (m.role !== 'user' && typeof m.cu === 'number') {
+          const tag = document.createElement('div');
+          tag.className = 'cu-tag';
+          tag.textContent = '≈ ' + m.cu.toFixed(2) + ' CU·s';
+          b.appendChild(tag);
+        }
+      });
+    }
+
+    q.addEventListener('input', () => {
+      q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 170) + 'px';
+    });
+    q.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (budgetBlocked) return;
+      const question = q.value.trim();
+      if (!question) return;
+      addMsg('user', question);
+      q.value = ''; q.style.height = 'auto';
+      send.disabled = true;
+      const pending = addMsg('agent', '');
+      pending.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, question })
+        });
+        const data = await res.json();
+        if (data.error) {
+          pending.parentElement.classList.add('error');
+          pending.innerHTML = render('⚠️ ' + data.error);
+          if (data.usage) renderUsage(data.usage);
+        } else {
+          pending.innerHTML = render(data.answer);
+          if (data.meta && typeof data.meta.cu_seconds === 'number') {
+            const tag = document.createElement('div');
+            tag.className = 'cu-tag';
+            tag.textContent = '≈ ' + data.meta.cu_seconds.toFixed(2) + ' CU·s'
+              + (data.meta.cu_basis && data.meta.cu_basis !== 'exact' ? ' (estimated)' : '');
+            pending.appendChild(tag);
+          }
+          renderUsage(data.usage);
+        }
+      } catch (err) {
+        pending.parentElement.classList.add('error');
+        pending.innerHTML = render('⚠️ Network error: ' + err);
+      } finally {
+        applyBlock();
+        if (!budgetBlocked) q.focus();
+      }
+    });
+  </script>
+</body>
+</html>

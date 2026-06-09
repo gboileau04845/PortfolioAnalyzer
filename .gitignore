@@ -1,0 +1,7 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+usage_store.json
+admin_config.json
+conversations_store.json
