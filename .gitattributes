@@ -1,0 +1,2 @@
+# Force LF for shell scripts so they run on Azure App Service (Linux).
+*.sh text eol=lf
