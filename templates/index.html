@@ -140,16 +140,6 @@
     .btn-ghost:hover { color: #a8351c; border-color: #f3c4b8; }
     .admin-msg { font-size: 13px; color: var(--green); min-height: 18px; }
     .admin-msg.err { color: #a8351c; }
-    /* admin access code gate */
-    .gate[hidden], #adminBody[hidden] { display: none; }
-    .gate-text { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
-    .gate-row { display: flex; gap: 12px; align-items: center; max-width: 420px; }
-    .gate-row input {
-      flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 6px;
-      font-family: var(--font-body); font-size: 15px; color: var(--navy);
-    }
-    .gate-row input:focus { outline: none; border-color: var(--navy); }
-    #gateMsg { display: block; margin-top: 12px; }
     .budget-readout { display: flex; gap: 28px; margin-top: 16px; flex-wrap: wrap; }
     .budget-readout div { font-size: 12.5px; color: var(--muted); }
     .budget-readout b { display: block; font-family: var(--font-head); font-size: 18px; color: var(--navy); font-weight: 500; }
@@ -286,7 +276,7 @@
           </div>
         </div>
       </div>
-      <button id="adminBtn" class="hdr-link" type="button">Administration</button>
+      <button id="adminBtn" class="hdr-link" type="button" hidden>Administration</button>
       <button id="signoutBtn" class="hdr-btn" type="button">Sign out</button>
     </div>
   </header>
@@ -315,17 +305,6 @@
         <h1>Administration</h1>
         <p class="admin-sub">Set the agent's Fabric capacity budgets and review consumption.</p>
 
-        <div class="card gate" id="adminGate">
-          <h2>Restricted area</h2>
-          <p class="gate-text">Enter the administration access code to continue.</p>
-          <div class="gate-row">
-            <input id="adminCodeInput" type="password" placeholder="Access code" autocomplete="off" />
-            <button id="adminUnlock" class="btn-primary" type="button">Unlock</button>
-          </div>
-          <span class="admin-msg err" id="gateMsg"></span>
-        </div>
-
-        <div id="adminBody" hidden>
         <div class="card">
           <h2>Usage budgets</h2>
           <div class="field-grid">
@@ -380,7 +359,6 @@
             </thead>
             <tbody id="usageRows"></tbody>
           </table>
-        </div>
         </div>
       </div>
     </section>
@@ -499,33 +477,19 @@
       return '<span class="mini-bar"><span class="mini-fill ' + cuClass(pct)
         + '" style="width:' + Math.min(pct, 100) + '%"></span></span>';
     }
-    let adminCode = '';            // access code, kept once validated
-    let adminAuthorized = false;
-    const adminGate = document.getElementById('adminGate');
-    const adminBody = document.getElementById('adminBody');
-
+    // Identité transmise aux endpoints admin (résolue côté serveur, en plus du
+    // SSO) : permet de retrouver l'utilisateur en mode local.
     function adminHeaders(extra) {
-      return Object.assign({ 'X-Admin-Code': adminCode }, extra || {});
+      return Object.assign({ 'X-Session-Id': sessionId }, extra || {});
     }
-    function showAdminBody() {
-      adminGate.hidden = true; adminBody.hidden = false;
+    function openAdmin() {
+      hero.hidden = true; chat.hidden = true; form.hidden = true;
+      adminView.hidden = false;
       document.getElementById('cfgMsg').textContent = '';
       fetch('/api/admin/config', { headers: adminHeaders() })
         .then(r => r.json()).then(d => {
           if (d.usage) { lastUsage = d.usage; renderAdmin(d.usage); }
         }).catch(() => { if (lastUsage) renderAdmin(lastUsage); });
-    }
-    function openAdmin() {
-      hero.hidden = true; chat.hidden = true; form.hidden = true;
-      adminView.hidden = false;
-      document.getElementById('gateMsg').textContent = '';
-      if (adminAuthorized) {
-        showAdminBody();
-      } else {
-        adminGate.hidden = false; adminBody.hidden = true;
-        const inp = document.getElementById('adminCodeInput');
-        inp.value = ''; inp.focus();
-      }
     }
     function closeAdmin() {
       adminView.hidden = true;
@@ -537,24 +501,6 @@
       if (adminView.hidden) openAdmin(); else closeAdmin();
     });
     document.getElementById('adminBack').addEventListener('click', closeAdmin);
-
-    async function tryUnlock() {
-      const gateMsg = document.getElementById('gateMsg');
-      const code = document.getElementById('adminCodeInput').value;
-      gateMsg.textContent = '';
-      try {
-        const res = await fetch('/api/admin/config', { headers: { 'X-Admin-Code': code } });
-        if (res.status === 403) { gateMsg.textContent = '⚠️ Invalid access code.'; return; }
-        const d = await res.json();
-        adminCode = code; adminAuthorized = true;
-        if (d.usage) { lastUsage = d.usage; }
-        showAdminBody();
-      } catch (e) { gateMsg.textContent = '⚠️ ' + e; }
-    }
-    document.getElementById('adminUnlock').addEventListener('click', tryUnlock);
-    document.getElementById('adminCodeInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); tryUnlock(); }
-    });
 
     document.getElementById('cfgSave').addEventListener('click', async () => {
       const msg = document.getElementById('cfgMsg');
@@ -569,7 +515,7 @@
         const res = await fetch('/api/admin/config', {
           method: 'POST', headers: adminHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body)
         });
-        if (res.status === 403) { msg.className = 'admin-msg err'; msg.textContent = '⚠️ Access code required.'; return; }
+        if (res.status === 403) { msg.className = 'admin-msg err'; msg.textContent = '⚠️ Access reserved to administrators.'; return; }
         const d = await res.json();
         if (d.ok) {
           msg.textContent = '✓ Budgets saved.';
@@ -605,6 +551,8 @@
           myUpn = (data.user && data.user.upn) || null;
           document.getElementById('huName').innerHTML =
             '<b>' + escapeHtml(name || 'User') + '</b>';
+          // « Administration » visible uniquement pour les utilisateurs autorisés.
+          adminBtn.hidden = !data.is_admin;
           renderUsage(data.usage);
           renderHistory(data.history);
           q.focus();

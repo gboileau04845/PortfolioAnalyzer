@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 # et instancie le client OpenAI + le credential SPN au niveau module).
 load_dotenv(override=True)
 
-from fastapi import FastAPI, Request, Body, Header  # noqa: E402
+from fastapi import FastAPI, Request, Body  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
@@ -61,8 +61,12 @@ _HISTORY_MAX = 400  # messages conservés par utilisateur (garde-fou)
 # Valeurs par défaut depuis .env, surchargeables à chaud via la page
 # Administration (persistées dans admin_config.json).
 _ADMIN_STORE = os.path.join(_DATA_DIR, "admin_config.json")
-# Code d'accès à la page Administration (vide = pas de protection).
-ADMIN_CODE = os.environ.get("ADMIN_ACCESS_CODE", "").strip()
+# Accès Administration : ensemble d'UPN autorisés (identité SSO). Vide = libre.
+ADMIN_USERS = {
+    u.strip().lower()
+    for u in os.environ.get("ADMIN_USERS", "").split(",")
+    if u.strip()
+}
 _env_group = float(
     os.environ.get("AGENT_CU_BUDGET_GROUP_PCT")
     or os.environ.get("AGENT_CU_BUDGET_PCT")
@@ -239,6 +243,29 @@ def _easyauth(request: Request):
     )
 
 
+def _request_upn(request: Request) -> str | None:
+    """UPN de l'utilisateur courant : en-tête SSO (Azure) sinon mapping de
+    session via l'en-tête X-Session-Id (mode local)."""
+    upn = request.headers.get("x-ms-client-principal-name")
+    if upn:
+        return upn
+    sid = request.headers.get("x-session-id")
+    if sid:
+        return (_session_user.get(sid) or {}).get("upn")
+    return None
+
+
+def _is_admin_upn(upn: str | None) -> bool:
+    """True si l'UPN est autorisé pour l'Administration (liste vide = libre)."""
+    if not ADMIN_USERS:
+        return True
+    return bool(upn) and upn.strip().lower() in ADMIN_USERS
+
+
+def _is_admin(request: Request) -> bool:
+    return _is_admin_upn(_request_upn(request))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
@@ -267,6 +294,7 @@ def login(request: Request, payload: dict = Body(default={})):
         return {
             "ok": True, "user": user, "usage": _snapshot(),
             "history": _history.get(upn, []),
+            "is_admin": _is_admin_upn(upn),
         }
     except Exception as e:
         return JSONResponse(
@@ -367,27 +395,25 @@ def chat(request: Request, payload: dict = Body(...)):
             fabric_agent.reset_request_token(reset)
 
 
-def _check_admin_code(code: str | None) -> bool:
-    """True si l'accès admin est autorisé (code correct, ou aucun code requis)."""
-    return (not ADMIN_CODE) or ((code or "").strip() == ADMIN_CODE)
-
-
-_FORBIDDEN = JSONResponse({"ok": False, "error": "Invalid admin code."}, status_code=403)
+def _forbidden() -> JSONResponse:
+    return JSONResponse(
+        {"ok": False, "error": "Access reserved to administrators."}, status_code=403
+    )
 
 
 @app.get("/api/admin/config")
-def admin_get_config(x_admin_code: str | None = Header(default=None)):
+def admin_get_config(request: Request):
     """Réglages de budget courants + instantané de conso (page Administration)."""
-    if not _check_admin_code(x_admin_code):
-        return _FORBIDDEN
+    if not _is_admin(request):
+        return _forbidden()
     return {"ok": True, "config": dict(_cfg), "usage": _snapshot()}
 
 
 @app.post("/api/admin/config")
-def admin_set_config(payload: dict = Body(...), x_admin_code: str | None = Header(default=None)):
+def admin_set_config(request: Request, payload: dict = Body(...)):
     """Met à jour les budgets à chaud (et persiste dans admin_config.json)."""
-    if not _check_admin_code(x_admin_code):
-        return _FORBIDDEN
+    if not _is_admin(request):
+        return _forbidden()
     errors = []
     new = dict(_cfg)
     for key, lo, hi in (
